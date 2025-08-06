@@ -159,7 +159,7 @@
   function resizeCanvas() {
     const container = document.getElementById('game-container');
     canvas.width = Math.min(container.clientWidth, 500);
-    canvas.height = 500;
+    canvas.height = 450;
     player.y = canvas.height - player.height - 10;
     if (!gameRunning) {
       player.x = (canvas.width - player.width) / 2;
