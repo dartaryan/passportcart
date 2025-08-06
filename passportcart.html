@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>הצלה עם פספורטכארד</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-red: #d92128;
+      --brand-yellow: #ffb600;
+      --success-green: #2e7d32;
+      --danger-red-bg: #c62828;
+      --light-bg: #f4f4f4;
+      --white-bg: #ffffff;
+    }
+    body {
+      font-family: 'Rubik', sans-serif;
+      touch-action: manipulation;
+      background-color: var(--white-bg);
+      color: var(--brand-red);
+    }
+    canvas {
+      background: linear-gradient(180deg, #ffebee 0%, #f8b2b5 100%);
+      display: block;
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    .game-ui-button {
+      transition: all 0.2s ease-in-out;
+      user-select: none;
+      border-radius: 9999px;
+      font-weight: 700;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      background-color: var(--brand-red);
+      color: var(--white-bg);
+    }
+    .game-ui-button:active {
+      transform: scale(0.95);
+      filter: brightness(0.9);
+    }
+    #modal-container {
+      transition: opacity 0.3s ease-in-out;
+    }
+    .modal-content {
+      animation: slide-up 0.4s ease-out;
+      background-color: var(--white-bg);
+    }
+    @keyframes slide-up {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      animation: fade-out 0.7s forwards;
+      background: var(--brand-red);
+    }
+    @keyframes fade-out {
+      to { transform: scale(0) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4 antialiased">
+
+<div id="game-container" class="w-full max-w-lg mx-auto flex flex-col items-center bg-[var(--white-bg)]">
+  <!-- Game Header -->
+  <div class="w-full flex justify-between items-center mb-4 px-2 bg-[var(--white-bg)]">
+    <div class="text-right">
+      <h1 class="text-2xl md:text-3xl font-bold text-[var(--brand-red)]">PassportCart 🛒</h1>
+      <p class="text-sm text-gray-500">אוספים ויורים על מה שלא צריכים</p>
+    </div>
+    <div class="flex items-center space-x-4 text-lg font-semibold" dir="ltr">
+      <div class="flex items-center bg-white px-4 py-2 rounded-full shadow-md">
+        <span id="lives" class="text-gray-700 font-bold">3</span>
+        <i class="fas fa-heart text-[var(--brand-red)] ml-2"></i>
+      </div>
+      <div class="flex items-center bg-white px-4 py-2 rounded-full shadow-md">
+        <span id="score" class="text-gray-700 font-bold">0</span>
+        <i class="fas fa-star text-[var(--brand-yellow)] ml-2"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas for the game -->
+  <canvas id="gameCanvas"></canvas>
+  <div id="particle-container"></div>
+
+  <!-- Mobile Controls -->
+  <div id="mobile-controls" class="w-full mt-4 flex justify-between items-center select-none">
+    <button id="right-btn" class="game-ui-button text-white w-20 h-20 flex items-center justify-center text-4xl"><i class="fas fa-arrow-right"></i></button>
+    <button id="fire-btn" class="game-ui-button bg-[var(--brand-yellow)] text-white w-24 h-24 flex items-center justify-center text-4xl border-4 border-yellow-200"><i class="fas fa-crosshairs"></i></button>
+    <button id="left-btn" class="game-ui-button text-white w-20 h-20 flex items-center justify-center text-4xl"><i class="fas fa-arrow-left"></i></button>
+  </div>
+</div>
+
+<!-- Modal for Start/Game Over -->
+<div id="modal-container" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4">
+  <div class="modal-content bg-white rounded-2xl shadow-2xl p-8 text-center max-w-sm w-full">
+    <h2 id="modal-title" class="text-3xl font-bold text-gray-800 mb-2">ברוכים הבאים!</h2>
+    <p id="modal-text" class="text-gray-600 mb-6">אספו את הפריטים הירוקים, וירו באדומים. אל תתנו לסכנות לפגוע בכם או ברצפה!</p>
+    <p id="final-score" class="text-2xl font-bold text-[var(--brand-red)] mb-6 hidden"></p>
+    <button id="start-btn" class="game-ui-button w-full bg-[var(--brand-red)] hover:opacity-90 text-white py-4 px-4 text-xl">
+      התחל משחק
+    </button>
+  </div>
+</div>
+
+<script>
+  // --- DOM ELEMENTS ---
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const modalContainer = document.getElementById('modal-container');
+  const modalTitle = document.getElementById('modal-title');
+  const modalText = document.getElementById('modal-text');
+  const finalScoreEl = document.getElementById('final-score');
+  const startBtn = document.getElementById('start-btn');
+  const particleContainer = document.getElementById('particle-container');
+
+  // --- GAME STATE & CONFIG ---
+  let score = 0;
+  let lives = 3;
+  let gameRunning = false;
+  let keys = {};
+  let items = [];
+  let beams = [];
+  let floatingTexts = [];
+  let itemSpawnTimer = 0;
+  let itemSpawnInterval = 120;
+  let difficultyIncreaseTimer = 0;
+
+  const player = {
+    x: 0, y: 0, width: 50, height: 50, speed: 8, dx: 0, img: new Image()
+  };
+  player.img.src = 'https://www.passportcard.com/wp-content/uploads/2024/08/PPC-FAV-ICON-512.svg';
+
+  const itemTypes = {
+    collectibles: [
+      { emoji: '🎒', points: 10, name: 'suitcase' }, { emoji: '🎫', points: 15, name: 'ticket' },
+      { emoji: '🩺', points: 25, name: 'health_card' }, { emoji: '☀️', points: 10, name: 'sun' },
+      { emoji: '📱', points: 20, name: 'smartphone' },
+    ],
+    hazards: [
+      { emoji: '🦠', points: -1, name: 'virus' }, { emoji: '📃', points: -1, name: 'invoice' },
+      { emoji: '💉', points: -1, name: 'syringe' }, { emoji: '🧳', points: -1, name: 'luggage' },
+      { emoji: '⛈️', points: -1, name: 'storm' },
+    ]
+  };
+
+  // --- CANVAS & SIZING ---
+  function resizeCanvas() {
+    const container = document.getElementById('game-container');
+    canvas.width = Math.min(container.clientWidth, 500);
+    canvas.height = 600;
+    player.y = canvas.height - player.height - 10;
+    if (!gameRunning) {
+      player.x = (canvas.width - player.width) / 2;
+    }
+  }
+
+  // --- PARTICLE EFFECT ---
+  function createParticles(x, y, color) {
+    for (let i = 0; i < 15; i++) {
+      const particle = document.createElement('div');
+      particle.classList.add('particle');
+      const size = Math.random() * 10 + 5;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${size}px`;
+      particle.style.background = color;
+      const canvasRect = canvas.getBoundingClientRect();
+      particle.style.left = `${canvasRect.left + x}px`;
+      particle.style.top = `${canvasRect.top + y}px`;
+      const angle = Math.random() * Math.PI * 2;
+      const force = Math.random() * 60 + 30;
+      const translateX = Math.cos(angle) * force;
+      const translateY = Math.sin(angle) * force;
+      particle.style.transform = `translate(${translateX}px, ${translateY}px) scale(1)`;
+      particleContainer.appendChild(particle);
+      setTimeout(() => particle.remove(), 700);
+    }
+  }
+
+  // --- GAME OBJECTS & DRAWING ---
+  function drawPlayer() {
+    ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
+  }
+
+  function drawItems() {
+    ctx.font = 'bold 32px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    items.forEach(item => {
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, item.width / 2, 0, Math.PI * 2);
+      ctx.fillStyle = item.type === 'collectible' ? 'rgba(46, 125, 50, 0.9)' : 'rgba(217, 33, 40, 0.9)';
+      ctx.shadowColor = 'rgba(0,0,0,0.2)';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'white';
+      ctx.fillText(item.emoji, item.x, item.y + 2);
+    });
+  }
+
+  function drawBeams() {
+    beams.forEach(beam => {
+      ctx.fillStyle = 'var(--brand-yellow)';
+      ctx.beginPath();
+      ctx.roundRect(beam.x, beam.y, beam.width, beam.height, [5]);
+      ctx.fill();
+    });
+  }
+
+  function drawFloatingTexts() {
+    ctx.font = 'bold 24px Rubik';
+    ctx.textAlign = 'center';
+    floatingTexts.forEach(text => {
+      ctx.save();
+      ctx.globalAlpha = text.alpha;
+      ctx.fillStyle = text.color;
+      ctx.fillText(text.text, text.x, text.y);
+      ctx.restore();
+    });
+  }
+
+  // --- GAME LOGIC ---
+  function updatePlayer() {
+    player.x += player.dx;
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+  }
+
+  function updateItems() {
+    itemSpawnTimer++;
+    if (itemSpawnTimer >= itemSpawnInterval) {
+      spawnItem();
+      itemSpawnTimer = 0;
+    }
+    items.forEach((item, index) => {
+      item.y += item.speed;
+      if (item.y - item.height/2 > canvas.height) {
+        if (item.type === 'hazard') {
+          updateLives(-1, item.x, canvas.height);
+        }
+        items.splice(index, 1);
+      }
+    });
+  }
+
+  function updateBeams() {
+    beams.forEach((beam, index) => {
+      beam.y -= beam.speed;
+      if (beam.y + beam.height < 0) beams.splice(index, 1);
+    });
+  }
+
+  function updateFloatingTexts() {
+    floatingTexts.forEach((text, index) => {
+      text.y -= 1; // Move up
+      text.alpha -= 0.02; // Fade out
+      if (text.alpha <= 0) {
+        floatingTexts.splice(index, 1);
+      }
+    });
+  }
+
+  function updateDifficulty() {
+    difficultyIncreaseTimer++;
+    if (difficultyIncreaseTimer > 600) {
+      if (itemSpawnInterval > 45) itemSpawnInterval -= 5;
+      difficultyIncreaseTimer = 0;
+    }
+  }
+
+  function spawnItem() {
+    const isHazard = Math.random() > 0.5;
+    const typeKey = isHazard ? 'hazards' : 'collectibles';
+    const itemList = itemTypes[typeKey];
+    const itemProto = itemList[Math.floor(Math.random() * itemList.length)];
+    items.push({
+      x: Math.random() * (canvas.width - 50) + 25, y: -30,
+      width: 50, height: 50, speed: Math.random() * 2 + 2.5,
+      type: isHazard ? 'hazard' : 'collectible', ...itemProto
+    });
+  }
+
+  function shootBeam() {
+    if (beams.length < 4) {
+      beams.push({
+        x: player.x + player.width / 2 - 4, y: player.y,
+        width: 8, height: 25, speed: 12
+      });
+    }
+  }
+
+  // --- COLLISION DETECTION ---
+  function detectCollisions() {
+    beams.forEach((beam, beamIndex) => {
+      items.forEach((item, itemIndex) => {
+        if (item.type === 'hazard' &&
+            beam.x < item.x + item.width / 2 && beam.x + beam.width > item.x - item.width / 2 &&
+            beam.y < item.y + item.height / 2 && beam.y + beam.height > item.y - item.height / 2) {
+
+          createParticles(item.x, item.y, 'var(--danger-red-bg)');
+          updateScore(10, item.x, item.y);
+          items.splice(itemIndex, 1);
+          beams.splice(beamIndex, 1);
+        }
+      });
+    });
+
+    items.forEach((item, index) => {
+      const dist = Math.hypot(item.x - (player.x + player.width / 2), item.y - (player.y + player.height / 2));
+      if (dist < item.width / 2 + player.width / 2 - 10) {
+        if (item.type === 'collectible') {
+          updateScore(item.points, item.x, item.y);
+          createParticles(item.x, item.y, 'var(--success-green)');
+          items.splice(index, 1);
+        } else if (item.type === 'hazard') {
+          updateLives(-1, item.x, item.y);
+          items.splice(index, 1);
+        }
+      }
+    });
+  }
+
+  // --- UI & STATE UPDATES ---
+  function updateScore(amount, x, y) {
+    score += amount;
+    floatingTexts.push({ text: `+${amount}`, x: x, y: y, alpha: 1, color: 'var(--success-green)' });
+    updateUI();
+  }
+
+  function updateLives(amount, x, y) {
+    lives += amount;
+    createParticles(x, y, 'var(--danger-red-bg)');
+    floatingTexts.push({ text: '-1 ❤️', x: x, y: y, alpha: 1, color: 'var(--brand-red)' });
+    if (lives <= 0) {
+      lives = 0;
+      gameOver();
+    }
+    updateUI();
+  }
+
+  function updateUI() {
+    scoreEl.textContent = score;
+    livesEl.textContent = lives;
+  }
+
+  function gameOver() {
+    gameRunning = false;
+    modalContainer.style.display = 'flex';
+    modalTitle.textContent = 'אוי 🥺';
+    modalText.textContent = 'המסע נגמר... בינתיים.';
+    finalScoreEl.textContent = `ניקוד סופי: ${score}`;
+    finalScoreEl.style.display = 'block';
+    startBtn.textContent = 'שחק שוב';
+  }
+
+  function resetGame() {
+    score = 0; lives = 3; items = []; beams = []; floatingTexts = [];
+    itemSpawnTimer = 0; itemSpawnInterval = 120; difficultyIncreaseTimer = 0;
+    player.x = (canvas.width - player.width) / 2;
+    updateUI();
+  }
+
+  // --- MAIN GAME LOOP ---
+  function loop() {
+    if (!gameRunning) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    updatePlayer(); updateItems(); updateBeams(); updateFloatingTexts();
+    updateDifficulty();
+    drawPlayer(); drawItems(); drawBeams(); drawFloatingTexts();
+    detectCollisions();
+    requestAnimationFrame(loop);
+  }
+
+  // --- EVENT LISTENERS ---
+  function handleKeyDown(e) {
+    keys[e.code] = true;
+    updatePlayerMovement();
+    if (e.code === 'Space' && gameRunning) { e.preventDefault(); shootBeam(); }
+  }
+  function handleKeyUp(e) {
+    keys[e.code] = false;
+    updatePlayerMovement();
+  }
+  function updatePlayerMovement() {
+    player.dx = 0;
+    if (keys['ArrowLeft'] || keys['KeyA']) player.dx = -player.speed;
+    if (keys['ArrowRight'] || keys['KeyD']) player.dx = player.speed;
+  }
+  function handleTouch(e, isStart) {
+    e.preventDefault();
+    const target = e.target.closest('button');
+    if (!target) return;
+    if (target.id === 'left-btn') keys['ArrowLeft'] = isStart;
+    if (target.id === 'right-btn') keys['ArrowRight'] = isStart;
+    if (target.id === 'fire-btn' && gameRunning && isStart) shootBeam();
+    updatePlayerMovement();
+  }
+  startBtn.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+    finalScoreEl.style.display = 'none';
+    resetGame(); gameRunning = true; loop();
+  });
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
+  document.getElementById('mobile-controls').addEventListener('touchstart', (e) => handleTouch(e, true), { passive: false });
+  document.getElementById('mobile-controls').addEventListener('touchend', (e) => handleTouch(e, false), { passive: false });
+
+  // --- INITIALIZATION ---
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  updateUI();
+</script>
+
+</body>
+</html>
